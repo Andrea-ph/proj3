@@ -75,19 +75,20 @@ setup_matrices <- function(t, pd, k = 80, backdays = 30) {
     }
   }
   
-  # Create penalty matrix S
-  # Penalizes second differences: (beta_{k-1} - 2*beta_k + beta_{k+1})^2
-  # This encourages smooth changes in the beta coefficients
-  D <- diff(diag(k), differences = 2)  # Second difference matrix
-  S <- crossprod(D)                    # S = D^T D
+  ## Create penalty matrix S
+  ## Penalizes second differences: (beta_{k-1} - 2*beta_k + beta_{k+1})^2
+  ## This encourages smooth changes in the beta coefficients
+  D <- diff(diag(k), differences = 2) ## Second difference matrix
+  S <- crossprod(D) ## S = D^T D
   
-  # Return all matrices as a list
+  ## Return all matrices as a list
   return(list(X = X, X_tilde = X_tilde, S = S, t_cover = t_cover))
 }
 
-# Create the matrices
-matrices <- setup_matrices(t, pd, k = 80)
+## Create the matrices
+matrices <- setup_matrices(t, pd, k = 80， backdays = 30)
 X <- matrices$X
 S <- matrices$S
 
 t_cover <- matrices$t_cover
+
