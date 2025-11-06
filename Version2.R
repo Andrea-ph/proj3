@@ -155,7 +155,7 @@ test_gradient <- function() {
   grad_analytical <- grad_nll(gamma_test, X, y, S, lambda_test)
   
   # Compute numerical gradient by finite differences
-  delta <- 1e-5  # Small step for finite difference
+  delta <- 1e-6  # Small step for finite difference
   grad_numerical <- numeric(length(gamma_test))
   
   for (i in 1:length(gamma_test)) {
@@ -189,6 +189,7 @@ test_gradient <- function() {
 # Run gradient test
 cat("\n=== Testing Gradient Function ===\n")
 test_gradient()
+
 
 
 
