@@ -23,10 +23,10 @@ pd <- pd / sum(pd) ## Normalization: sum(pd)=1
 ## X is the model matrix for deaths incorporating the convolution structure.
 ## S is the penalty matrix for smoothing.
 setup_matrices <- function(t, pd, k = 80, backdays = 30) {
-  ## t: a vector of observation days (julian days).
-  ## pd: probability distribution of infection-to-death duration.
-  ## k: number of B-spline basis functions.
-  ## backdays: 30 to avoid looking too far back for the origins of the infections causing the first deaths.
+## t: a vector of observation days (julian days).
+## pd: probability distribution of infection-to-death duration.
+## k: number of B-spline basis functions.
+## backdays: 30 to avoid looking too far back for the origins of the infections causing the first deaths.
   
   n <- length(t)  ## Number of observations
   
@@ -94,67 +94,66 @@ S <- matrices$S
 t_cover <- matrices$t_cover
 
 
-# Negative log-likelihood function for Poisson model
-# Working with gamma = log(beta) to ensure beta > 0
-# Returns penalized negative log-likelihood
+## Negative log-likelihood function for Poisson model
+## Working with gamma = log(beta) to ensure beta > 0
+## Returns penalized negative log-likelihood
 nll <- function(gamma, X, y, S, lambda) {
-  # Parameters:
-  # gamma: log-transformed parameters (ensures positivity)
-  # X: model matrix
-  # y: observed deaths
-  # S: penalty matrix
-  # lambda: smoothing parameter
+## Parameters:
+## gamma: log-transformed parameters (ensures positivity)
+## X: model matrix
+## y: observed deaths
+## S: penalty matrix
+## lambda: smoothing parameter
   
-  beta <- exp(gamma)           # Transform to ensure beta > 0
-  mu <- X %*% beta             # Expected deaths: mu = X * beta
-  mu <- as.vector(mu)          # Convert to vector
+  beta <- exp(gamma) ## Transform to ensure beta > 0
+  mu <- X %*% beta  ## Expected deaths: mu = X * beta
+  mu <- as.vector(mu) ## Convert to vector
   
-  # Poisson log-likelihood: sum(y*log(mu) - mu - log(y!))
-  # We drop log(y!) as it doesn't depend on parameters
+  ## Poisson log-likelihood: sum(y*log(mu) - mu - log(y!))
+  ## We drop log(y!) as it doesn't depend on parameters
   ll <- sum(y * log(mu) - mu)
   
-  # Add smoothing penalty: lambda * beta^T * S * beta / 2
+  ## Add smoothing penalty: lambda * beta^T * S * beta / 2
   penalty <- (lambda / 2) * sum(beta * (S %*% beta))
   
-  # Return negative penalized log-likelihood
+  ## Return negative penalized log-likelihood
   return(-ll + penalty)
 }
 
-# Gradient of negative log-likelihood with respect to gamma
-# This uses the chain rule: d(nll)/d(gamma) = d(nll)/d(beta) * d(beta)/d(gamma)
+## Gradient of negative log-likelihood with respect to gamma
+## This uses the chain rule: d(nll)/d(gamma) = d(nll)/d(beta) * d(beta)/d(gamma)
 grad_nll <- function(gamma, X, y, S, lambda) {
-  # Parameters: same as nll()
   
-  beta <- exp(gamma)           # Transform parameters
-  mu <- X %*% beta             # Expected deaths
-  mu <- as.vector(mu)          # Convert to vector
+  beta <- exp(gamma) ## Transform parameters
+  mu <- X %*% beta ## Expected deaths
+  mu <- as.vector(mu) ## Convert to vector
   
-  # Gradient of log-likelihood w.r.t. beta
-  # d(ll)/d(beta) = X^T * (y/mu - 1)
+  ## Gradient of log-likelihood w.r.t. beta
+  ## d(ll)/d(beta) = X^T * (y/mu - 1)
   grad_ll_beta <- t(X) %*% (y / mu - 1)
   
-  # Gradient of penalty w.r.t. beta
-  # d(penalty)/d(beta) = lambda * S * beta
+  ## Gradient of penalty w.r.t. beta
+  ## d(penalty)/d(beta) = lambda * S * beta
   grad_penalty_beta <- lambda * (S %*% beta)
   
-  # Chain rule: d(beta)/d(gamma) = diag(beta)
-  # So d(nll)/d(gamma) = -diag(beta) * (grad_ll_beta - grad_penalty_beta)
-  grad <- -beta * (grad_ll_beta - grad_penalty_beta)
+  ## Using Chain rule: d(beta)/d(gamma) = diag(beta)
+  ## So d(nll)/d(gamma) = -diag(beta) * (grad_ll_beta - grad_penalty_beta)
+  grad_gamma <- -beta * (grad_ll_beta - grad_penalty_beta)
   
-  return(as.vector(grad))
+  return(as.vector(grad_gamma))
 }
 
 
-# Function to test gradient accuracy
+## Function to test gradient accuracy
 test_gradient <- function() {
-  # Use random starting values for testing
+  ## Use random starting values for testing
   gamma_test <- rnorm(ncol(X))
   lambda_test <- 5e-5
   
-  # Compute analytical gradient
+  ## Compute analytical gradient
   grad_analytical <- grad_nll(gamma_test, X, y, S, lambda_test)
   
-  # Compute numerical gradient by finite differences
+  ## Compute numerical gradient by finite differences
   delta <- 1e-6  # Small step for finite difference
   grad_numerical <- numeric(length(gamma_test))
   
@@ -170,11 +169,11 @@ test_gradient <- function() {
     grad_numerical[i] <- (nll_plus - nll_minus) / (2 * delta)
   }
   
-  # Compare gradients
+  ## Compare gradients
   max_diff <- max(abs(grad_analytical - grad_numerical))
   cat("Maximum difference between analytical and numerical gradient:", max_diff, "\n")
   
-  # Test passes if difference is very small (< 1e-5)
+  ## Test passes if difference is very small (< 1e-5)
   if (max_diff < 1e-5) {
     cat("Gradient test PASSED!\n")
   } else {
@@ -186,9 +185,10 @@ test_gradient <- function() {
   }
 }
 
-# Run gradient test
+## Run gradient test
 cat("\n=== Testing Gradient Function ===\n")
 test_gradient()
+
 
 
 
