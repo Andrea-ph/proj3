@@ -93,8 +93,6 @@ S <- matrices$S
 
 t_cover <- matrices$t_cover
 
-# STEP 4: Negative log-likelihood and gradient functions
-################################################################################
 
 # Negative log-likelihood function for Poisson model
 # Working with gamma = log(beta) to ensure beta > 0
@@ -146,14 +144,10 @@ grad_nll <- function(gamma, X, y, S, lambda) {
   return(as.vector(grad))
 }
 
-################################################################################
-# STEP 5: Test gradient function by finite differencing
-################################################################################
 
 # Function to test gradient accuracy
 test_gradient <- function() {
   # Use random starting values for testing
-  set.seed(123)
   gamma_test <- rnorm(ncol(X))
   lambda_test <- 5e-5
   
@@ -195,6 +189,7 @@ test_gradient <- function() {
 # Run gradient test
 cat("\n=== Testing Gradient Function ===\n")
 test_gradient()
+
 
 
 
