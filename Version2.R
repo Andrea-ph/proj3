@@ -86,9 +86,10 @@ setup_matrices <- function(t, pd, k = 80, backdays = 30) {
 }
 
 ## Create the matrices
-matrices <- setup_matrices(t, pd, k = 80， backdays = 30)
+matrices <- setup_matrices(t, pd, k = 80, backdays = 30)
 X <- matrices$X
 S <- matrices$S
 
 t_cover <- matrices$t_cover
+
 
