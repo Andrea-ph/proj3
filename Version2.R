@@ -189,6 +189,60 @@ test_gradient <- function() {
 cat("\n=== Testing Gradient Function ===\n")
 test_gradient()
 
+cat("\n=== Sanity Check: Fitting model with lambda = 5e-5 ===\n")
+
+# Set smoothing parameter for initial fit
+lambda_initial <- 5e-5
+
+# Starting values: initialize gamma to small random values
+# This corresponds to beta ≈ 1
+gamma_init <- rnorm(ncol(X), mean = 0, sd = 0.1)
+
+# Optimize using BFGS method from optim
+# BFGS is a quasi-Newton method that builds up Hessian approximation
+fit_initial <- optim(
+  par = gamma_init, fn = nll, gr = grad_nll, X = X, y = y, S = S,
+  lambda = lambda_initial, method = "BFGS", control = list(maxit = 1000)
+)
+
+# Check convergence
+if (fit_initial$convergence != 0) {
+  warning("Optimization did not converge!")
+} else {
+  cat("Optimization converged successfully\n")
+}
+
+# Extract fitted parameters
+gamma_hat <- fit_initial$par
+beta_hat <- exp(gamma_hat)
+
+# Calculate fitted values
+mu_fitted <- as.vector(X %*% beta_hat)
+
+# Calculate f(t) - the infection curve
+# f(t) is evaluated at extended time points
+f_fitted <- as.vector(matrices$X_tilde %*% beta_hat)
+
+# Plot results
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+
+# Plot 1: Actual vs Fitted Deaths
+plot(t, y, type = "p", pch = 19, col = "black",
+     xlab = "Day of Year 2020", ylab = "Deaths", main = "Actual vs Fitted Deaths")
+lines(t, mu_fitted, col = "red", lwd = 2)
+legend("topright", legend = c("Actual", "Fitted"), col = c("black", "red"),
+       pch = c(19, NA), lty = c(NA, 1), lwd = c(NA, 2))
+
+# Plot 2: Inferred Daily Infections
+# Note: t_ext includes days before first observation (from t[1]-30)
+plot(t_cover, f_fitted, type = "l", col = "blue", lwd = 2,
+     xlab = "Day of Year 2020", ylab = "Daily New Infections", main = "Inferred Infection Curve f(t)")
+abline(v = min(t), lty = 2, col = "gray")  # Mark first observation day
+text(min(t) + 5, max(f_fitted) * 0.9, 
+     "First death", pos = 4, col = "gray")
+
+cat("\nSanity check plots created\n")
+
 
 
 
