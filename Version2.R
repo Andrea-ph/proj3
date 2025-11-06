@@ -222,7 +222,104 @@ plot(t_cover, f_fitted, type = "l", col = "blue", lwd = 2,
      xlab = "Day of Year 2020", ylab = "Daily New Infections", main = "Inferred Infection Curve f(t)")
 abline(v = min(t), lty = 2, col = "gray") ## Mark first observation day
 text(min(t) + 5, max(f_fitted) * 0.9, "First death", pos = 4, col = "gray")
-cat("\nSanity check plots created\n")
+
+compute_bic <- function(gamma, lambda, X, y, S) {
+  # Function to compute effective degrees of freedom and BIC
+  # EDF = trace(H_lambda^{-1} * H_0) where:
+  # H_lambda = X^T W X + lambda*S (Hessian with penalty)
+  # H_0 = X^T W X (Hessian without penalty)
+  # W = diag(y_i / mu_i^2)
+  beta <- exp(gamma)
+  mu <- as.vector(X %*% beta)
+  
+  # Negative log-likelihood (without penalty)
+  nll_value <- -sum(y * log(mu) - mu)
+  
+  # Weight matrix W for Hessian computation
+  # W_ii = y_i / mu_i^2
+  W <- y / (mu^2)
+  
+  # Compute Hessian matrices
+  # These are w.r.t. beta, not gamma
+  XtWX <- t(X) %*% (W * X)  # X^T W X (using vectorized multiplication)
+  H_lambda <- XtWX + lambda * S
+  H_0 <- XtWX
+  
+    L <- chol(H_lambda)#需要严格正定
+    
+    # 用 chol2inv 得到 H_lambda^{-1}
+    H_lambda_inv <- chol2inv(L)
+    
+    # 计算 trace(H_lambda^{-1} * H_0)
+    edf <- sum(diag(H_lambda_inv %*% H_0))
+    
+
+  
+  # BIC = -2*log-likelihood + log(n)*EDF
+  bic <- 2 * nll_value + log(length(y)) * edf
+  
+  return(list(bic = bic, edf = edf, nll = nll_value))
+}
+
+# Grid search over log(lambda)
+log_lambda_seq <- seq(-13, -7, length = 50)
+lambda_seq <- exp(log_lambda_seq)
+
+# Storage for results
+bic_values <- numeric(length(lambda_seq))
+edf_values <- numeric(length(lambda_seq))
+nll_values <- numeric(length(lambda_seq))
+gamma_fits <- matrix(0, length(gamma_init), length(lambda_seq))
+
+# Progress indicator
+cat("Optimizing over", length(lambda_seq), "lambda values...\n")
+
+for (i in 1:length(lambda_seq)) { ## Loop over lambda values
+  lambda_current <- lambda_seq[i]
+  
+  fit_current <- optim( ## Optimize for current lambda
+    par = gamma_init,  # Use same starting values
+    fn = nll, gr = grad_nll, X = X, y = y,
+    S = S, lambda = lambda_current, method = "BFGS",control = list(maxit = 1000))
+  
+  # Store results
+  gamma_fits[, i] <- fit_current$par
+  
+  bic_result <- compute_bic(fit_current$par, lambda_current, X, y, S)
+  bic_values[i] <- bic_result$bic
+  edf_values[i] <- bic_result$edf
+  nll_values[i] <- bic_result$nll
+  
+  # Progress update every 10 iterations
+  if (i %% 10 == 0) {
+    cat("  Completed", i, "of", length(lambda_seq), "\n")
+  }
+}
+
+# Find optimal lambda
+optimal_idx <- which.min(bic_values)
+lambda_optimal <- lambda_seq[optimal_idx]
+log_lambda_optimal <- log_lambda_seq[optimal_idx]
+gamma_optimal <- gamma_fits[, optimal_idx]
+
+cat("\nOptimal log(lambda):", log_lambda_optimal, "\n")
+cat("Optimal lambda:", lambda_optimal, "\n")
+cat("Minimum BIC:", bic_values[optimal_idx], "\n")
+cat("Effective degrees of freedom at optimum:", edf_values[optimal_idx], "\n")
+
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1)) ## Plot BIC curve
+
+plot(log_lambda_seq, bic_values, type = "l", lwd = 2,
+     xlab = "log(lambda)", ylab = "BIC", main = "BIC vs log(lambda)")
+points(log_lambda_optimal, bic_values[optimal_idx], 
+       col = "red", pch = 19, cex = 1.5)
+abline(v = log_lambda_optimal, lty = 2, col = "red")
+
+plot(edf_values, bic_values, type = "l", lwd = 2,
+     xlab = "Effective Degrees of Freedom", ylab = "BIC", main = "BIC vs EDF")
+points(edf_values[optimal_idx], bic_values[optimal_idx],
+       col = "red", pch = 19, cex = 1.5)
+
 
 
 
