@@ -93,5 +93,108 @@ S <- matrices$S
 
 t_cover <- matrices$t_cover
 
+# STEP 4: Negative log-likelihood and gradient functions
+################################################################################
+
+# Negative log-likelihood function for Poisson model
+# Working with gamma = log(beta) to ensure beta > 0
+# Returns penalized negative log-likelihood
+nll <- function(gamma, X, y, S, lambda) {
+  # Parameters:
+  # gamma: log-transformed parameters (ensures positivity)
+  # X: model matrix
+  # y: observed deaths
+  # S: penalty matrix
+  # lambda: smoothing parameter
+  
+  beta <- exp(gamma)           # Transform to ensure beta > 0
+  mu <- X %*% beta             # Expected deaths: mu = X * beta
+  mu <- as.vector(mu)          # Convert to vector
+  
+  # Poisson log-likelihood: sum(y*log(mu) - mu - log(y!))
+  # We drop log(y!) as it doesn't depend on parameters
+  ll <- sum(y * log(mu) - mu)
+  
+  # Add smoothing penalty: lambda * beta^T * S * beta / 2
+  penalty <- (lambda / 2) * sum(beta * (S %*% beta))
+  
+  # Return negative penalized log-likelihood
+  return(-ll + penalty)
+}
+
+# Gradient of negative log-likelihood with respect to gamma
+# This uses the chain rule: d(nll)/d(gamma) = d(nll)/d(beta) * d(beta)/d(gamma)
+grad_nll <- function(gamma, X, y, S, lambda) {
+  # Parameters: same as nll()
+  
+  beta <- exp(gamma)           # Transform parameters
+  mu <- X %*% beta             # Expected deaths
+  mu <- as.vector(mu)          # Convert to vector
+  
+  # Gradient of log-likelihood w.r.t. beta
+  # d(ll)/d(beta) = X^T * (y/mu - 1)
+  grad_ll_beta <- t(X) %*% (y / mu - 1)
+  
+  # Gradient of penalty w.r.t. beta
+  # d(penalty)/d(beta) = lambda * S * beta
+  grad_penalty_beta <- lambda * (S %*% beta)
+  
+  # Chain rule: d(beta)/d(gamma) = diag(beta)
+  # So d(nll)/d(gamma) = -diag(beta) * (grad_ll_beta - grad_penalty_beta)
+  grad <- -beta * (grad_ll_beta - grad_penalty_beta)
+  
+  return(as.vector(grad))
+}
+
+################################################################################
+# STEP 5: Test gradient function by finite differencing
+################################################################################
+
+# Function to test gradient accuracy
+test_gradient <- function() {
+  # Use random starting values for testing
+  set.seed(123)
+  gamma_test <- rnorm(ncol(X))
+  lambda_test <- 5e-5
+  
+  # Compute analytical gradient
+  grad_analytical <- grad_nll(gamma_test, X, y, S, lambda_test)
+  
+  # Compute numerical gradient by finite differences
+  delta <- 1e-5  # Small step for finite difference
+  grad_numerical <- numeric(length(gamma_test))
+  
+  for (i in 1:length(gamma_test)) {
+    gamma_plus <- gamma_test
+    gamma_plus[i] <- gamma_plus[i] + delta
+    nll_plus <- nll(gamma_plus, X, y, S, lambda_test)
+    
+    gamma_minus <- gamma_test
+    gamma_minus[i] <- gamma_minus[i] - delta
+    nll_minus <- nll(gamma_minus, X, y, S, lambda_test)
+    
+    grad_numerical[i] <- (nll_plus - nll_minus) / (2 * delta)
+  }
+  
+  # Compare gradients
+  max_diff <- max(abs(grad_analytical - grad_numerical))
+  cat("Maximum difference between analytical and numerical gradient:", max_diff, "\n")
+  
+  # Test passes if difference is very small (< 1e-5)
+  if (max_diff < 1e-5) {
+    cat("Gradient test PASSED!\n")
+  } else {
+    cat("Gradient test FAILED!\n")
+    cat("Sample differences (first 10 elements):\n")
+    print(head(cbind(Analytical = grad_analytical, 
+                     Numerical = grad_numerical,
+                     Difference = grad_analytical - grad_numerical), 10))
+  }
+}
+
+# Run gradient test
+cat("\n=== Testing Gradient Function ===\n")
+test_gradient()
+
 
 
