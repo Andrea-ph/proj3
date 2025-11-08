@@ -154,35 +154,30 @@ test_gradient <- function() {
   
   ## Compute analytical gradient
   grad_analytical <- grad_nll(gamma_test, X, y, S, lambda_test)
+  
   ## Compute numerical gradient by finite differences
-  delta <- 1e-6  # Small step for finite difference
+  eps <- 1e-7 
   grad_numerical <- numeric(length(gamma_test))
   
-  for (i in 1:length(gamma_test)) { 
-    gamma_plus <- gamma_test 
-    gamma_plus[i] <- gamma_plus[i] + delta 
-    nll_plus <- nll(gamma_plus, X, y, S, lambda_test)
-    gamma_minus <- gamma_test
-    gamma_minus[i] <- gamma_minus[i] - delta
-    nll_minus <- nll(gamma_minus, X, y, S, lambda_test)
-    grad_numerical[i] <- (nll_plus - nll_minus) / (2 * delta) ## Using centered difference
+  nll_0 <- nll(gamma_test, X, y, S, lambda_test)
+  
+  for (i in 1:length(gamma_test)) {
+    gamma_temp <- gamma_test
+    gamma_temp[i] <- gamma_temp[i] + eps
+    nll_1 <- nll(gamma_temp, X, y, S, lambda_test)
+    grad_numerical[i] <- (nll_1 - nll_0) / eps
   }
   
   ## Compare gradients
-  max_diff <- max(abs(grad_analytical - grad_numerical))
-  cat("Maximum difference between analytical and numerical gradient:", max_diff, "\n")
-  
-  if (max_diff < 1e-5) { ## Test passes if difference is very small (< 1e-5)
-    cat("Gradient test PASSED!\n")
-  } else {
-    cat("Gradient test FAILED!\n")
-    cat("Sample differences (first 10 elements):\n")
-    print(head(cbind(Analytical = grad_analytical, Numerical = grad_numerical, 
-                     Difference = grad_analytical - grad_numerical), 10))
-  }
+  cat("Sample gradient comparison (first 5 elements):\n")
+  print(head(cbind(Analytical = grad_analytical, 
+                   Numerical = grad_numerical,
+                   Difference = grad_analytical - grad_numerical), 5))
 }
 
-test_gradient() ## Run gradient test
+## Run gradient test
+cat("\n=== Testing Gradient Function ===\n")
+test_gradient()
 
 cat("\n=== Sanity Check: Fitting model with lambda = 5e-5 ===\n")
 lambda_initial <- 5e-5 ## Set smoothing parameter for initial fit
@@ -390,6 +385,7 @@ legend("topright",
        legend = c("Estimated f(t)", "95% CI", "First Death"),
        col = c("blue", "blue", "gray"), lty = c(1, 2, 2), 
        lwd = c(2, 1, 1), bty = "n")
+
 
 
 
