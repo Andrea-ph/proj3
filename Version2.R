@@ -165,7 +165,6 @@ test_gradient <- function() {
     gamma_minus <- gamma_test
     gamma_minus[i] <- gamma_minus[i] - delta
     nll_minus <- nll(gamma_minus, X, y, S, lambda_test)
-    
     grad_numerical[i] <- (nll_plus - nll_minus) / (2 * delta) ## Using centered difference
   }
   
@@ -205,8 +204,7 @@ if (fit_initial$convergence != 0) { ## Check convergence
 gamma_hat <- fit_initial$par ## Extract fitted parameters
 beta_hat <- exp(gamma_hat)
 mu_fitted <- as.vector(X %*% beta_hat) ## Calculate fitted values
-f_fitted <- as.vector(matrices$X_tilde %*% beta_hat) ## f(t), the infection curve evaluated at extended time points.
-
+f_fitted <- as.vector(matrices$X_tilde %*% beta_hat) ## f(t), the infection curve evaluated at extended time points
 par(mfrow = c(1, 2), mar = c(4, 4, 3, 1)) ## Plot results
 
 ## Plot 1: Actual vs Fitted Deaths
@@ -231,25 +229,19 @@ compute_bic <- function(gamma, lambda, X, y, S) {
 ## W = diag(y_i / mu_i^2)
   beta <- exp(gamma)
   mu <- as.vector(X %*% beta)
-  
   nll_value <- -sum(y * log(mu) - mu) ## Negative log-likelihood (without penalty)
-  
   W <- y / (mu^2) ## Weight matrix W for Hessian computation, W_ii = y_i / mu_i^2
   
   ## Compute Hessian matrices, w.r.t. beta, not gamma.
   XtWX <- t(X) %*% (W * X)  ## X^T W X (using vectorized multiplication)
   H_lambda <- XtWX + lambda * S
   H_0 <- XtWX
-  
   L <- chol(H_lambda) ## strictly positive definite
-    
   H_lambda_inv <- chol2inv(L) ## get H_lambda^{-1}
-    
   edf <- sum(diag(H_lambda_inv %*% H_0)) ## compute trace(H_lambda^{-1} * H_0)
-    
+  
   ## BIC = -2*log-likelihood + log(n)*EDF
   bic <- 2 * nll_value + log(length(y)) * edf
-  
   return(list(bic = bic, edf = edf, nll = nll_value))
 }
 
@@ -307,6 +299,97 @@ plot(edf_values, bic_values, type = "l", lwd = 2,
 points(edf_values[optimal_index], bic_values[optimal_index],
        col = "red", pch = 19, cex = 1.5)
 
+## obtain 200 bootstrap replicates of f_hat
+n_bootstrap <- 200
+
+f_bootstrap <- matrix(0, length(t_cover), n_bootstrap) ## Storage for bootstrap results
+                                                       ## Each column is f(t) for one bootstrap replicate
+
+
+for (b in 1:n_bootstrap) { ## Bootstrap loop
+  wb <- tabulate(sample(n, replace = TRUE), n) ## Generate bootstrap weights, equivalent to resampling data with replacement
+  nll_bootstrap <- function(gamma, X, y, S, lambda, weights) {
+    ## Modified negative log-likelihood with bootstrap weights
+    beta <- exp(gamma)
+    mu <- X %*% beta
+    mu <- as.vector(mu)
+    ll <- sum(weights * (y * log(mu) - mu)) ## Weighted log-likelihood
+    penalty <- (lambda / 2) * sum(beta * (S %*% beta))
+    return(-ll + penalty)
+  }
+  
+  grad_nll_bootstrap <- function(gamma, X, y, S, lambda, weights) {
+    ## Modified gradient with bootstrap weights
+    beta <- exp(gamma)
+    mu <- X %*% beta
+    mu <- as.vector(mu)
+    grad_ll_beta <- t(X) %*% (weights * (y / mu - 1))
+    grad_penalty_beta <- lambda * (S %*% beta)
+    grad <- -beta * (grad_ll_beta - grad_penalty_beta)
+    return(as.vector(grad))
+  }
+  
+  fit_boot <- optim( ## Optimize for bootstrap sample
+    par = gamma_optimal,  ## Start from optimal parameters
+    fn = nll_bootstrap, gr = grad_nll_bootstrap,
+    X = X, y = y, S = S, lambda = lambda_optimal,
+    weights = wb, method = "BFGS", control = list(maxit = 1000)
+  )
+  
+  beta_boot <- exp(fit_boot$par) ## Calculate f(t) for this bootstrap replicate
+  f_bootstrap[, b] <- as.vector(matrices$X_tilde %*% beta_boot)
+  
+  if (b %% 20 == 0) { ## Progress update
+    cat("  Completed", b, "of", n_bootstrap, "bootstrap replicates\n")
+  }
+}
+
+## Calculate 95% confidence intervals
+f_lower <- apply(f_bootstrap, 1, quantile, probs = 0.025) ## 2.5th percentiles for each time point
+f_upper <- apply(f_bootstrap, 1, quantile, probs = 0.975) ## 97.5th percentiles for each time point
+
+f_mean <- apply(f_bootstrap, 1, mean) ## calculate mean bootstrap estimate
+
+## Calculate final fitted values with optimal lambda
+beta_optimal <- exp(gamma_optimal)
+mu_optimal <- as.vector(X %*% beta_optimal)
+f_optimal <- as.vector(matrices$X_tilde %*% beta_optimal)
+
+par(mfrow = c(2, 1), mar = c(4, 4, 3, 1)) ## Create comprehensive plot with two panels
+
+## Panel 1: Deaths - Actual vs Fitted
+plot(t, y, type = "p", pch = 19, cex = 0.8, col = "black",
+     xlab = "Day of Year 2020", ylab = "Number of Deaths",
+     main = "COVID-19 Deaths: Actual vs Model Fit", ylim = c(0, max(y) * 1.1))
+lines(t, mu_optimal, col = "red", lwd = 2)
+legend("topright", legend = c("Observed Deaths", "Model Fit"),
+       col = c("black", "red"), pch = c(19, NA),
+       lty = c(NA, 1), lwd = c(NA, 2), bty = "n")
+
+## Add text with model information
+text(min(t) + 5, max(y) * 1.05,
+     paste0("Optimal log(λ) = ", round(log_lambda_optimal, 2)),
+     pos = 4, cex = 0.8)
+
+## Panel 2: Inferred Daily Infections with 95% CI
+plot(t_cover, f_optimal, type = "l", col = "blue", lwd = 2,
+     xlab = "Day of Year 2020", ylab = "Daily New Infections",
+     main = "Inferred Daily Infection Rate with 95% Confidence Intervals",
+     ylim = c(0, max(f_upper) * 1.1))
+
+## Add confidence interval as shaded region
+polygon(c(t_cover, rev(t_cover)), c(f_lower, rev(f_upper)),
+        col = rgb(0, 0, 1, 0.2), border = NA)
+
+## Add confidence interval boundary lines
+lines(t_cover, f_lower, col = "blue", lty = 2, lwd = 1)
+lines(t_cover, f_upper, col = "blue", lty = 2, lwd = 1)
+lines(t_cover, f_optimal, col = "blue", lwd = 2)
+abline(v = min(t), lty = 2, col = "gray") ## Mark first observation day
+legend("topright",
+       legend = c("Estimated f(t)", "95% CI", "First Death"),
+       col = c("blue", "blue", "gray"), lty = c(1, 2, 2), 
+       lwd = c(2, 1, 1), bty = "n")
 
 
 
