@@ -14,8 +14,13 @@
 ## infections from observed death data, using B-splines with a smoothing penalty.
 ################################################################################
 
+## Load required library for B-spline basis functions
 library(splines)
+
+## Read COVID-19 death data from English hospitals
+## Data contains daily deaths (nhs) and corresponding julian day (julian) in 2020
 dat <- read.table("engcov.txt", header = TRUE)
+
 ## Extract relevant variables
 y <- dat$nhs ## Deaths in NHS hospitals
 t <- dat$julian ## Day of the year 2020
@@ -24,13 +29,15 @@ n <- length(y) ## Number of observations
 ## Calculate probability distribution for infection-to-death duration
 
 ## Duration from infection to death follows log-normal distribution
-## log(d) ~ N(3.151, 0.469^2) where d is duration in days
+## Based on epidemiological data: log(d) ~ N(3.151, 0.469^2)
+## where d is the duration in days from infection to death
 edur <- 3.151  ## Mean of log-duration
 sdur <- 0.469  ## Standard deviation of log-duration
 
-## The probability of each fatal disease duration from 1 day up tp the max 80 days
+## The probability of each fatal disease duration from 1 day up to 80 days max.
+## We cap at 80 days as longer durations have negligible probability
 d <- 1:80
-pd <- dlnorm(d, edur, sdur) ## Log-normal density for each duration
+pd <- dlnorm(d, edur, sdur) ## Log-normal probability density for each duration
 pd <- pd / sum(pd) ## Normalization: sum(pd)=1
 
 ## Function to create model matrices X, X_tilde, and penalty matrix S.
@@ -385,6 +392,7 @@ legend("topright",
        legend = c("Estimated f(t)", "95% CI", "First Death"),
        col = c("blue", "blue", "gray"), lty = c(1, 2, 2), 
        lwd = c(2, 1, 1), bty = "n")
+
 
 
 
