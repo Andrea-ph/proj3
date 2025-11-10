@@ -100,47 +100,66 @@ setup_matrices <- function(t, pd, k = 80, backdays = 30) {
     }
   }
   
-  ## Create penalty matrix S.
+  ## Create penalty matrix S for controlling smoothness.
   ## Penalizes second differences: (beta_{k-1} - 2*beta_k + beta_{k+1})^2.
   ## This encourages smooth changes in the beta coefficients.
   D <- diff(diag(k), differences = 2) ## Second difference matrix
-  S <- crossprod(D) ## S = D^T D
+  S <- crossprod(D) ## S = D^T D      ## S = D^T * D, dimension k x k
   
   return(list(X = X, X_tilde = X_tilde, S = S, t_cover = t_cover)) ## Return all matrices as a list
 }
 
-## Create the matrices
+## Create the matrices using constructed function.
 matrices <- setup_matrices(t, pd, k = 80, backdays = 30)
-X <- matrices$X
-X_tilde <- matrices$X_tilde
-S <- matrices$S
-t_cover <- matrices$t_cover
+X <- matrices$X               ## Model matrix for deaths (150 x 80)
+X_tilde <- matrices$X_tilde   ## B-spline basis matrix (180 x 80)
+S <- matrices$S               ## Penalty matrix (80 x 80)
+t_cover <- matrices$t_cover   ## Time points for f(t) (length 180)
 
-## Negative log-likelihood function for Poisson model
-## Working with gamma = log(beta) to ensure beta > 0
-## Returns penalized negative log-likelihood
 
 nll <- function(gamma, X, y, S, lambda) {
-## gamma: log-transformed parameters (ensures positivity)
-## X: model matrix
-## y: observed deaths
-## S: penalty matrix
-## lambda: smoothing parameter
+## Compute the negative log-likelihood function for Poisson model
+## Working with gamma = log(beta) to ensure beta > 0 (required for rates).
+## The model is: y_i ~ Poi(mu_i) where mu_i = sum_j X[i,j] * beta_j
+## The log-likelihood is: l = sum_i (y_i * log(mu_i) - mu_i - log(y_i!))
+## The penalty is: P = (lambda/2) * beta^T * S * beta
+
+## Arguments:
+ ##   gamma: log-transformed parameters (length k vector)
+ ##   X: model matrix (n x k)
+ ##   y: observed deaths (length n vector)
+ ##   S: penalty matrix (k x k)
+ ##   lambda: smoothing parameter (scalar > 0)
+
+## Returns 
+ ## Scalar value of penalized negative log-likelihood
+
   
   beta <- exp(gamma) ## Transform to ensure beta > 0
   mu <- X %*% beta  ## Expected deaths: mu = X * beta
-  mu <- as.vector(mu) ## Convert to vector
+  mu <- as.vector(mu) ## Convert from matrix to vector
   ## Poisson log-likelihood: sum(y*log(mu) - mu - log(y!))
   ll <- sum(y * log(mu) - mu) ## We drop log(y!) as it doesn't depend on parameters
   ## Add smoothing penalty: lambda * beta^T * S * beta / 2
   penalty <- (lambda / 2) * sum(beta * (S %*% beta))
   
-  return(-ll + penalty) ## Return negative penalized log-likelihood
+  return(-ll + penalty) ## Return negative penalized log-likelihood,We minimize this, equivalent to maximizing penalized likelihood.
 }
 
+
+grad_nll <- function(gamma, X, y, S, lambda) {
 ## Gradient of negative log-likelihood with respect to gamma
 ## This uses the chain rule: d(nll)/d(gamma) = d(nll)/d(beta) * d(beta)/d(gamma)
-grad_nll <- function(gamma, X, y, S, lambda) {
+  
+  ## Arguments:
+     ##   gamma: log-transformed parameters (length k vector)
+     ##   X: model matrix (n x k)
+     ##   y: observed deaths (length n vector)
+     ##   S: penalty matrix (k x k)
+     ##   lambda: smoothing parameter (scalar > 0)
+  
+## Returns:
+##   Gradient vector (length k)
   
   beta <- exp(gamma) ## Transform parameters
   mu <- X %*% beta ## Expected deaths
@@ -161,25 +180,29 @@ grad_nll <- function(gamma, X, y, S, lambda) {
 }
 
 ## Function to test gradient accuracy
+## This is essential to verify correctness of derivative calculations.
+## Uses central difference approximation: f'(x) ≈ (f(x+h) - f(x)) / h
 test_gradient <- function() {
   ## Use random starting values for testing
   gamma_test <- rnorm(ncol(X))
   lambda_test <- 5e-5
   
-  ## Compute analytical gradient
+  ## Compute analytical gradient using the formula
   grad_analytical <- grad_nll(gamma_test, X, y, S, lambda_test)
   
   ## Compute numerical gradient by finite differences
-  eps <- 1e-7 
+  eps <- 1e-7  ## Small step size for finite difference
   grad_numerical <- numeric(length(gamma_test))
-  
+
+   ## Get function value at test point
   nll_0 <- nll(gamma_test, X, y, S, lambda_test)
-  
+
+   ## Loop over each parameter, computing partial derivative
   for (i in 1:length(gamma_test)) {
     gamma_temp <- gamma_test
-    gamma_temp[i] <- gamma_temp[i] + eps
+    gamma_temp[i] <- gamma_temp[i] + eps  ## Perturb i-th parameter
     nll_1 <- nll(gamma_temp, X, y, S, lambda_test)
-    grad_numerical[i] <- (nll_1 - nll_0) / eps
+    grad_numerical[i] <- (nll_1 - nll_0) / eps ## Finite difference
   }
   
   ## Compare gradients
@@ -399,6 +422,7 @@ legend("topright",
        legend = c("Estimated f(t)", "95% CI", "First Death"),
        col = c("blue", "blue", "gray"), lty = c(1, 2, 2), 
        lwd = c(2, 1, 1), bty = "n")
+
 
 
 
