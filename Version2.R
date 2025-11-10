@@ -51,20 +51,25 @@ setup_matrices <- function(t, pd, k = 80, backdays = 30) {
 ## k: number of B-spline basis functions.
 ## backdays: 30 to avoid looking too far back for the origins of the infections causing the first deaths.
   
-  n <- length(t)  ## Number of observations
-  
-  ## Define the range for f(t): from t[1]-30 to t[n]
+  n <- length(t)  ## Number of death observations
+
+  ## Define time range for modeling infections from t[1]-30 to t[n]
   ## We need to model infections that occurred up to 30 days before first death
-  t_min <- t[1] - backdays
-  t_max <- t[n]
+  t_min <- t[1] - backdays ## Start: 30 days before first death
+  t_max <- t[n]            ## End: last observation day
+
   
   ## Create knot sequence for B-splines
-  ## Need k+4 evenly spaced knots, with middle k-2 covering our time range
+  ## B-splines require k+4 evenly spaced knots, with middle k-2 covering our time range
+  ##   - The first and last 2 knots are boundary knots
+  ##   - The middle k knots define the basis functions
   ## This ensures the splines span the entire period of interest
   knots <- seq(t_min, t_max, length = k + 4)
   
   ## Create time points where f(t) will be evaluated.
-  t_cover <- seq(t_min, t_max, by=1) ## From t[1]-30 to t[n], covering all possible infection times (integers).
+  ## Using by=1 ensures we have integer days only (not fractional days)
+  ## This gives us exactly t_max - t_min + 1 points
+  t_cover <- seq(t_min, t_max, by=1) ## From t[1]-30 to t[n], covering all possible infection times.
   
   ## Generate B-spline basis matrix X_tilde.
   ## Each column is a B-spline basis function evaluated at t_cover.
@@ -73,16 +78,18 @@ setup_matrices <- function(t, pd, k = 80, backdays = 30) {
   
   ## Initialize model matrix X for deaths
   X <- matrix(0, n, k) ## X[i,j] gives contribution of beta_j to expected deaths on day t[i].
+                       ## This accounts for the convolution of infections with the duration distribution
   
   ## Build X by convolving X_tilde with probability distribution pd
   for (i in 1:n) { ## For each observation day i
     ## Determine range of infection days that contribute to deaths on day t[i].
     j_max <- min(29 + i, 80) ## Upper limit: either 29 days before day i, or 80 days before, whichever is less.
     
-    ## For each possible duration j from infection to death
+    ## Loop over possible durations from infection to death
     for (j in 1:j_max) {
-      ## Index in extended time vector for infection day
-      ## Day t[i] - j is when infection occurred that leads to death on day t[i]
+      ## Calculate index in t_cover corresponding to infection time
+      ## If death occurs on day t[i] and duration is j days, then infection occurred on day t[i] - j
+      ## Since t_cover starts at t[1]-backdays, the index is:
       subscript <- 30 + i - j
       
       ## Add weighted contribution of B-splines at infection time
@@ -392,6 +399,7 @@ legend("topright",
        legend = c("Estimated f(t)", "95% CI", "First Death"),
        col = c("blue", "blue", "gray"), lty = c(1, 2, 2), 
        lwd = c(2, 1, 1), bty = "n")
+
 
 
 
