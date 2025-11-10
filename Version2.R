@@ -5,11 +5,11 @@
 ####proj3 - Group 33 - Extended Statistical Programming ###
 #### Group members as below ################################
 #### Shuo Li (s2795688), Zhe Zhu (s2841606), Antrea Filippou (s2766374)
-#### Contributions as below ################################
-#### Shuo Li:  (%) #########################
-#### Zhe Zhu: (%) ######################
-#### Antrea Filippou: (%) ###################
-############################################################
+#### Contributions as below ##################################################################################
+#### Shuo Li: Setup matrices (X_tilde, X, S)；Write functions suitable for use with optim(33%)################
+#### Zhe Zhu: sanity check and  fit the model using λ = 5*10−5；BIC optimization and lambda selection (33%)###
+#### Antrea Filippou: Bootstrap analysis and final visualization (34%)########################################
+##############################################################################################################
 ## This code implements a smooth deconvolution model to infer daily new COVID-19
 ## infections from observed death data, using B-splines with a smoothing penalty.
 ################################################################################
@@ -388,6 +388,7 @@ lines(t_cover, f_optimal, col = "blue", lwd = 2) ## Redraw main curve on top of 
 abline(v = min(t), lty = 2, col = "gray") ## Mark first observation day
 legend("topright", legend = c("Estimated f(t)", "95% CI", "First Death"),
        col = c("blue", "blue", "gray"), lty = c(1, 2, 2), lwd = c(2, 1, 1), bty = "n")
+
 
 
 
