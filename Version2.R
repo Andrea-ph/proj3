@@ -205,14 +205,14 @@ test_gradient <- function() {
     grad_numerical[i] <- (nll_1 - nll_0) / eps ## Finite difference
   }
   
-  ## Compare gradients
+  ## Compare gradients 
   cat("Sample gradient comparison (first 5 elements):\n")
   print(head(cbind(Analytical = grad_analytical, 
                    Numerical = grad_numerical,
                    Difference = grad_analytical - grad_numerical), 5))
 }
 
-## Run gradient test
+## Run gradient test to verify the correctness
 cat("\n=== Testing Gradient Function ===\n")
 test_gradient()
 
@@ -226,6 +226,7 @@ fit_initial <- optim( ## Optimize using BFGS method from optim.
   par = gamma_init, fn = nll, gr = grad_nll, X = X, y = y, S = S,
   lambda = lambda_initial, method = "BFGS", control = list(maxit = 1000)
 ) ## BFGS is a quasi-Newton method that builds up Hessian approximation
+  ## It uses gradient information to converge faster than derivative-free methods
 
 if (fit_initial$convergence != 0) { ## Check convergence
   warning("Optimization did not converge!")
@@ -242,23 +243,38 @@ par(mfrow = c(1, 2), mar = c(4, 4, 3, 1)) ## Plot results
 ## Plot 1: Actual vs Fitted Deaths
 plot(t, y, type = "p", pch = 19, col = "black",
      xlab = "Day of Year 2020", ylab = "Deaths", main = "Actual vs Fitted Deaths")
-lines(t, mu_fitted, col = "red", lwd = 2)
+lines(t, mu_fitted, col = "red", lwd = 2) ## Add fitted line
 legend("topright", legend = c("Actual", "Fitted"), col = c("black", "red"),
-       pch = c(19, NA), lty = c(NA, 1), lwd = c(NA, 2))
+       pch = c(19, NA), lty = c(NA, 1), lwd = c(NA, 2)) ## Point for actual, line for fitted
 
 ## Plot 2: Inferred Daily Infections
 ## Please note: t_cover includes days before first observation (from t[1]-30)
-plot(t_cover, f_fitted, type = "l", col = "blue", lwd = 2,
+plot(t_cover, f_fitted, type = "l", col = "blue", lwd = 2,  ## Line plot
      xlab = "Day of Year 2020", ylab = "Daily New Infections", main = "Inferred Infection Curve f(t)")
-abline(v = min(t), lty = 2, col = "gray") ## Mark first observation day
+abline(v = min(t), lty = 2, col = "gray") ## Mark first observation(death) day
 text(min(t) + 5, max(f_fitted) * 0.9, "First death", pos = 4, col = "gray")
 
 compute_bic <- function(gamma, lambda, X, y, S) {
 ## Function to compute effective degrees of freedom and BIC
+## BIC = -2*log-likelihood + log(n) * EDF
 ## EDF = trace(H_lambda^{-1} * H_0) where:
 ## H_lambda = X^T W X + lambda*S (Hessian with penalty)
 ## H_0 = X^T W X (Hessian without penalty)
-## W = diag(y_i / mu_i^2)
+## W = diag(y_i / mu_i^2) (Fisher information weight matrix)
+
+  ## Arguments:
+##   gamma: fitted log-parameters (length k vector)
+##   lambda: smoothing parameter (scalar)
+##   X: model matrix (n x k)
+##   y: observed deaths (length n vector)
+##   S: penalty matrix (k x k)
+##
+## Returns:
+##   List with components:
+##     bic: BIC value
+##     edf: effective degrees of freedom
+##     nll: negative log-likelihood (unpenalized)
+
   beta <- exp(gamma)
   mu <- as.vector(X %*% beta)
   nll_value <- -sum(y * log(mu) - mu) ## Negative log-likelihood (without penalty)
@@ -266,20 +282,23 @@ compute_bic <- function(gamma, lambda, X, y, S) {
   
   ## Compute Hessian matrices, w.r.t. beta, not gamma.
   XtWX <- t(X) %*% (W * X)  ## X^T W X (using vectorized multiplication)
-  H_lambda <- XtWX + lambda * S
-  H_0 <- XtWX
+  H_lambda <- XtWX + lambda * S ## Penalized Hessian
+  H_0 <- XtWX        ## Unpenalized Hessian
+
+  ## Compute effective degrees of freedom
+  ## Use Cholesky decomposition for numerical stability
   L <- chol(H_lambda) ## strictly positive definite
   H_lambda_inv <- chol2inv(L) ## get H_lambda^{-1}
   edf <- sum(diag(H_lambda_inv %*% H_0)) ## compute trace(H_lambda^{-1} * H_0)
   
-  ## BIC = -2*log-likelihood + log(n)*EDF
+  ## Compute BIC
   bic <- 2 * nll_value + log(length(y)) * edf
   return(list(bic = bic, edf = edf, nll = nll_value))
 }
 
-## Grid search over log(lambda)
+## Grid search over log(lambda) from -13 to -7 corresponds to 50 equally spaced values
 log_lambda_seq <- seq(-13, -7, length = 50)
-lambda_seq <- exp(log_lambda_seq)
+lambda_seq <- exp(log_lambda_seq) ## Convert to lambda scale
 
 ## Storage for results
 bic_values <- numeric(length(lambda_seq))
@@ -287,7 +306,8 @@ edf_values <- numeric(length(lambda_seq))
 nll_values <- numeric(length(lambda_seq))
 gamma_fits <- matrix(0, length(gamma_init), length(lambda_seq))
 
-for (i in 1:length(lambda_seq)) { ## Loop over lambda values
+## Loop over each lambda value in grid
+for (i in 1:length(lambda_seq)) { 
   lambda_current <- lambda_seq[i]
   
   fit_current <- optim( ## Optimize for current lambda
@@ -297,38 +317,44 @@ for (i in 1:length(lambda_seq)) { ## Loop over lambda values
 
   ## Store results
   gamma_fits[, i] <- fit_current$par 
+  
+  ## Compute BIC for this fit
   bic_result <- compute_bic(fit_current$par, lambda_current, X, y, S)
   bic_values[i] <- bic_result$bic
   edf_values[i] <- bic_result$edf
   nll_values[i] <- bic_result$nll
   
-  if (i %% 10 == 0) { ## Progress update every 10 iterations
+  if (i %% 10 == 0) { ## Print progress update every 10 iterations
     cat("  Completed", i, "of", length(lambda_seq), "\n")
   }
 }
 
-## Find optimal lambda
+## Find optimal lambda minimize bic
 optimal_index <- which.min(bic_values)
 lambda_optimal <- lambda_seq[optimal_index]
 log_lambda_optimal <- log_lambda_seq[optimal_index]
 gamma_optimal <- gamma_fits[, optimal_index]
 
+## Report optimization results
 cat("\nOptimal log(lambda):", log_lambda_optimal, "\n")
 cat("Optimal lambda:", lambda_optimal, "\n")
 cat("Minimum BIC:", bic_values[optimal_index], "\n")
 cat("Effective degrees of freedom at optimum:", edf_values[optimal_index], "\n")
 
-## Plot BIC curve
+## Plot BIC curve for visualize selection
 par(mfrow = c(1, 2), mar = c(4, 4, 3, 1)) 
-plot(log_lambda_seq, bic_values, type = "l", lwd = 2,
-     xlab = "log(lambda)", ylab = "BIC", main = "BIC vs log(lambda)")
-points(log_lambda_optimal, bic_values[optimal_index], 
-       col = "red", pch = 19, cex = 1.5)
-abline(v = log_lambda_optimal, lty = 2, col = "red")
 
+## Plot 1: BIC vs log(lambda)
+plot(log_lambda_seq, bic_values, type = "l", lwd = 2,   ## Line plot
+     xlab = "log(lambda)", ylab = "BIC", main = "BIC vs log(lambda)")
+points(log_lambda_optimal, bic_values[optimal_index], ## Mark optimum
+       col = "red", pch = 19, cex = 1.5)
+abline(v = log_lambda_optimal, lty = 2, col = "red") ## Vertical line at optimum
+
+## Plot 2: BIC vs Effective Degrees of Freedom
 plot(edf_values, bic_values, type = "l", lwd = 2,
      xlab = "Effective Degrees of Freedom", ylab = "BIC", main = "BIC vs EDF")
-points(edf_values[optimal_index], bic_values[optimal_index],
+points(edf_values[optimal_index], bic_values[optimal_index], ## Mark optimum
        col = "red", pch = 19, cex = 1.5)
 
 ## obtain 200 bootstrap replicates of f_hat
@@ -337,41 +363,46 @@ n_bootstrap <- 200
 f_bootstrap <- matrix(0, length(t_cover), n_bootstrap) ## Storage for bootstrap results
                                                        ## Each column is f(t) for one bootstrap replicate
 
-
-for (b in 1:n_bootstrap) { ## Bootstrap loop
+## bootstrap resampling
+## Instead of actually resampling data, we use weighted likelihood
+## where weights wb indicate how many times each observation is sampled
+for (b in 1:n_bootstrap) { 
   wb <- tabulate(sample(n, replace = TRUE), n) ## Generate bootstrap weights, equivalent to resampling data with replacement
+                                               ## tabulate counts how many times each index appears
   nll_bootstrap <- function(gamma, X, y, S, lambda, weights) {
     ## Modified negative log-likelihood with bootstrap weights
     beta <- exp(gamma)
     mu <- X %*% beta
     mu <- as.vector(mu)
-    ll <- sum(weights * (y * log(mu) - mu)) ## Weighted log-likelihood
-    penalty <- (lambda / 2) * sum(beta * (S %*% beta))
+    ll <- sum(weights * (y * log(mu) - mu)) ## Weighted Poisson log-likelihood
+    
+    penalty <- (lambda / 2) * sum(beta * (S %*% beta)) #same penalty as before not weighted
     return(-ll + penalty)
   }
-  
+
+   
   grad_nll_bootstrap <- function(gamma, X, y, S, lambda, weights) {
     ## Modified gradient with bootstrap weights
     beta <- exp(gamma)
     mu <- X %*% beta
     mu <- as.vector(mu)
-    grad_ll_beta <- t(X) %*% (weights * (y / mu - 1))
-    grad_penalty_beta <- lambda * (S %*% beta)
-    grad <- -beta * (grad_ll_beta - grad_penalty_beta)
+    grad_ll_beta <- t(X) %*% (weights * (y / mu - 1)) ## Weighted gradient of log-likelihood w.r.t. beta
+    grad_penalty_beta <- lambda * (S %*% beta)     ## Gradient of penalty (same as before)
+    grad <- -beta * (grad_ll_beta - grad_penalty_beta)   ## Apply chain rule
     return(as.vector(grad))
   }
   
   fit_boot <- optim( ## Optimize for bootstrap sample
     par = gamma_optimal,  ## Start from optimal parameters
     fn = nll_bootstrap, gr = grad_nll_bootstrap,
-    X = X, y = y, S = S, lambda = lambda_optimal,
+    X = X, y = y, S = S, lambda = lambda_optimal, ## Use optimal lambda from BIC
     weights = wb, method = "BFGS", control = list(maxit = 1000)
   )
   
   beta_boot <- exp(fit_boot$par) ## Calculate f(t) for this bootstrap replicate
   f_bootstrap[, b] <- as.vector(matrices$X_tilde %*% beta_boot)
   
-  if (b %% 20 == 0) { ## Progress update
+  if (b %% 20 == 0) { ## Progress update every 20 replicates
     cat("  Completed", b, "of", n_bootstrap, "bootstrap replicates\n")
   }
 }
@@ -384,19 +415,19 @@ f_mean <- apply(f_bootstrap, 1, mean) ## calculate mean bootstrap estimate
 
 ## Calculate final fitted values with optimal lambda
 beta_optimal <- exp(gamma_optimal)
-mu_optimal <- as.vector(X %*% beta_optimal)
-f_optimal <- as.vector(matrices$X_tilde %*% beta_optimal)
+mu_optimal <- as.vector(X %*% beta_optimal) ## Fitted deaths
+f_optimal <- as.vector(matrices$X_tilde %*% beta_optimal) ## Fitted infections
 
 par(mfrow = c(2, 1), mar = c(4, 4, 3, 1)) ## Create comprehensive plot with two panels
 
 ## Panel 1: Deaths - Actual vs Fitted
-plot(t, y, type = "p", pch = 19, cex = 0.8, col = "black",
+plot(t, y, type = "p", pch = 19, cex = 0.8, col = "black", ## Solid circles, Point size
      xlab = "Day of Year 2020", ylab = "Number of Deaths",
-     main = "COVID-19 Deaths: Actual vs Model Fit", ylim = c(0, max(y) * 1.1))
-lines(t, mu_optimal, col = "red", lwd = 2)
+     main = "COVID-19 Deaths: Actual vs Model Fit", ylim = c(0, max(y) * 1.1)) ## Add 10% margin at top
+lines(t, mu_optimal, col = "red", lwd = 2) ## Overlay fitted curve
 legend("topright", legend = c("Observed Deaths", "Model Fit"),
        col = c("black", "red"), pch = c(19, NA),
-       lty = c(NA, 1), lwd = c(NA, 2), bty = "n")
+       lty = c(NA, 1), lwd = c(NA, 2), bty = "n") ## No box around legend
 
 ## Add text with model information
 text(min(t) + 5, max(y) * 1.05,
@@ -409,19 +440,24 @@ plot(t_cover, f_optimal, type = "l", col = "blue", lwd = 2,
      main = "Inferred Daily Infection Rate with 95% Confidence Intervals",
      ylim = c(0, max(f_upper) * 1.1))
 
-## Add confidence interval as shaded region
-polygon(c(t_cover, rev(t_cover)), c(f_lower, rev(f_upper)),
+## Add 95% confidence interval as shaded region
+## x-coordinates (forward then backward)
+## y-coordinates (lower then upper)
+## Transparent blue
+## No border
+polygon(c(t_cover, rev(t_cover)), c(f_lower, rev(f_upper)), 
         col = rgb(0, 0, 1, 0.2), border = NA)
 
 ## Add confidence interval boundary lines
-lines(t_cover, f_lower, col = "blue", lty = 2, lwd = 1)
+lines(t_cover, f_lower, col = "blue", lty = 2, lwd = 1) 
 lines(t_cover, f_upper, col = "blue", lty = 2, lwd = 1)
-lines(t_cover, f_optimal, col = "blue", lwd = 2)
+lines(t_cover, f_optimal, col = "blue", lwd = 2) ## Redraw main curve on top of shading
 abline(v = min(t), lty = 2, col = "gray") ## Mark first observation day
 legend("topright",
        legend = c("Estimated f(t)", "95% CI", "First Death"),
        col = c("blue", "blue", "gray"), lty = c(1, 2, 2), 
        lwd = c(2, 1, 1), bty = "n")
+
 
 
 
