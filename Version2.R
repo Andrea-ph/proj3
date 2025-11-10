@@ -14,9 +14,7 @@
 ## infections from observed death data, using B-splines with a smoothing penalty.
 ################################################################################
 
-## Load required library for B-spline basis functions
-library(splines)
-
+library(splines) ## Load required library for B-spline basis functions
 ## Read COVID-19 death data from English hospitals
 ## Data contains daily deaths (nhs) and corresponding julian day (julian) in 2020
 dat <- read.table("engcov.txt", header = TRUE)
@@ -55,20 +53,17 @@ setup_matrices <- function(t, pd, k = 80, backdays = 30) {
 
   ## Define time range for modeling infections from t[1]-30 to t[n]
   ## We need to model infections that occurred up to 30 days before first death
-  t_min <- t[1] - backdays ## Start: 30 days before first death
-  t_max <- t[n]            ## End: last observation day
+  t_min <- t[1] - backdays 
+  t_max <- t[n]            
 
   
-  ## Create knot sequence for B-splines
-  ## B-splines require k+4 evenly spaced knots, with middle k-2 covering our time range
-  ##   - The first and last 2 knots are boundary knots
-  ##   - The middle k knots define the basis functions
-  ## This ensures the splines span the entire period of interest
+  ## Create knot sequence for B-splines, requiring equire k+4 evenly spaced knots, with middle k-2 covering our time range.
+  ## The first and last 2 knots are boundary knots, and the middle k knots define the basis functions.
+  ## This ensures the splines span the entire period of interest.
   knots <- seq(t_min, t_max, length = k + 4)
   
   ## Create time points where f(t) will be evaluated.
-  ## Using by=1 ensures we have integer days only (not fractional days)
-  ## This gives us exactly t_max - t_min + 1 points
+  ## Using by=1 ensures we have integer days only (not fractional days).
   t_cover <- seq(t_min, t_max, by=1) ## From t[1]-30 to t[n], covering all possible infection times.
   
   ## Generate B-spline basis matrix X_tilde.
@@ -78,9 +73,9 @@ setup_matrices <- function(t, pd, k = 80, backdays = 30) {
   
   ## Initialize model matrix X for deaths
   X <- matrix(0, n, k) ## X[i,j] gives contribution of beta_j to expected deaths on day t[i].
-                       ## This accounts for the convolution of infections with the duration distribution
+                       ## This accounts for the convolution of infections with the duration distribution.
   
-  ## Build X by convolving X_tilde with probability distribution pd
+  ## Build X by convolving X_tilde with probability distribution pd.
   for (i in 1:n) { ## For each observation day i
     ## Determine range of infection days that contribute to deaths on day t[i].
     j_max <- min(29 + i, 80) ## Upper limit: either 29 days before day i, or 80 days before, whichever is less.
@@ -111,55 +106,31 @@ setup_matrices <- function(t, pd, k = 80, backdays = 30) {
 
 ## Create the matrices using constructed function.
 matrices <- setup_matrices(t, pd, k = 80, backdays = 30)
-X <- matrices$X               ## Model matrix for deaths (150 x 80)
-X_tilde <- matrices$X_tilde   ## B-spline basis matrix (180 x 80)
-S <- matrices$S               ## Penalty matrix (80 x 80)
-t_cover <- matrices$t_cover   ## Time points for f(t) (length 180)
+X <- matrices$X ## Model matrix for deaths (150*80)
+X_tilde <- matrices$X_tilde  ## B-spline basis matrix (180*80)
+S <- matrices$S ## Penalty matrix (80*80)
+t_cover <- matrices$t_cover ## Time points for f(t) (length 180)
 
-
-nll <- function(gamma, X, y, S, lambda) {
-## Compute the negative log-likelihood function for Poisson model
+nll <- function(gamma, X, y, S, lambda) { ## Compute the negative log-likelihood function for Poisson model
 ## Working with gamma = log(beta) to ensure beta > 0 (required for rates).
 ## The model is: y_i ~ Poi(mu_i) where mu_i = sum_j X[i,j] * beta_j
 ## The log-likelihood is: l = sum_i (y_i * log(mu_i) - mu_i - log(y_i!))
 ## The penalty is: P = (lambda/2) * beta^T * S * beta
-
-## Arguments:
- ##   gamma: log-transformed parameters (length k vector)
- ##   X: model matrix (n x k)
- ##   y: observed deaths (length n vector)
- ##   S: penalty matrix (k x k)
- ##   lambda: smoothing parameter (scalar > 0)
-
-## Returns 
- ## Scalar value of penalized negative log-likelihood
-
   
   beta <- exp(gamma) ## Transform to ensure beta > 0
-  mu <- X %*% beta  ## Expected deaths: mu = X * beta
+  mu <- X %*% beta  ## Expected deaths mu = X * beta
   mu <- as.vector(mu) ## Convert from matrix to vector
   ## Poisson log-likelihood: sum(y*log(mu) - mu - log(y!))
   ll <- sum(y * log(mu) - mu) ## We drop log(y!) as it doesn't depend on parameters
   ## Add smoothing penalty: lambda * beta^T * S * beta / 2
   penalty <- (lambda / 2) * sum(beta * (S %*% beta))
   
-  return(-ll + penalty) ## Return negative penalized log-likelihood,We minimize this, equivalent to maximizing penalized likelihood.
+  return(-ll + penalty) ## Return negative penalized log-likelihood. Minimize this, equivalent to maximizing penalized likelihood.
 }
-
 
 grad_nll <- function(gamma, X, y, S, lambda) {
 ## Gradient of negative log-likelihood with respect to gamma
 ## This uses the chain rule: d(nll)/d(gamma) = d(nll)/d(beta) * d(beta)/d(gamma)
-  
-  ## Arguments:
-     ##   gamma: log-transformed parameters (length k vector)
-     ##   X: model matrix (n x k)
-     ##   y: observed deaths (length n vector)
-     ##   S: penalty matrix (k x k)
-     ##   lambda: smoothing parameter (scalar > 0)
-  
-## Returns:
-##   Gradient vector (length k)
   
   beta <- exp(gamma) ## Transform parameters
   mu <- X %*% beta ## Expected deaths
@@ -181,23 +152,20 @@ grad_nll <- function(gamma, X, y, S, lambda) {
 
 ## Function to test gradient accuracy
 ## This is essential to verify correctness of derivative calculations.
-## Uses central difference approximation: f'(x) ≈ (f(x+h) - f(x)) / h
+## Using f'(x) ≈ (f(x+h) - f(x)) / h
 test_gradient <- function() {
   ## Use random starting values for testing
   gamma_test <- rnorm(ncol(X))
   lambda_test <- 5e-5
-  
   ## Compute analytical gradient using the formula
   grad_analytical <- grad_nll(gamma_test, X, y, S, lambda_test)
-  
   ## Compute numerical gradient by finite differences
-  eps <- 1e-7  ## Small step size for finite difference
+  eps <- 1e-7  ## finite difference interval
   grad_numerical <- numeric(length(gamma_test))
 
-   ## Get function value at test point
+  ## Get function value at test point
   nll_0 <- nll(gamma_test, X, y, S, lambda_test)
-
-   ## Loop over each parameter, computing partial derivative
+  ## Loop over each parameter, computing partial derivative
   for (i in 1:length(gamma_test)) {
     gamma_temp <- gamma_test
     gamma_temp[i] <- gamma_temp[i] + eps  ## Perturb i-th parameter
@@ -205,28 +173,23 @@ test_gradient <- function() {
     grad_numerical[i] <- (nll_1 - nll_0) / eps ## Finite difference
   }
   
-  ## Compare gradients 
-  cat("Sample gradient comparison (first 5 elements):\n")
-  print(head(cbind(Analytical = grad_analytical, 
-                   Numerical = grad_numerical,
+  ## Sample gradient comparison
+  print(head(cbind(Analytical = grad_analytical, Numerical = grad_numerical,
                    Difference = grad_analytical - grad_numerical), 5))
 }
 
-## Run gradient test to verify the correctness
-cat("\n=== Testing Gradient Function ===\n")
-test_gradient()
+test_gradient() ## Run gradient test to verify the correctness
 
-cat("\n=== Sanity Check: Fitting model with lambda = 5e-5 ===\n")
+## Sanity Check: Fitting model with lambda = 5e-5
 lambda_initial <- 5e-5 ## Set smoothing parameter for initial fit
-
+## Initialize gamma to small random values. This corresponds to beta ≈ 1.
 gamma_init <- rnorm(ncol(X), mean = 0, sd = 0.1) 
-## Starting values: initialize gamma to small random values. This corresponds to beta ≈ 1
 
 fit_initial <- optim( ## Optimize using BFGS method from optim.
   par = gamma_init, fn = nll, gr = grad_nll, X = X, y = y, S = S,
   lambda = lambda_initial, method = "BFGS", control = list(maxit = 1000)
-) ## BFGS is a quasi-Newton method that builds up Hessian approximation
-  ## It uses gradient information to converge faster than derivative-free methods
+) ## BFGS is a quasi-Newton method that builds up Hessian approximation.
+  ## It uses gradient information to converge faster than derivative-free methods.
 
 if (fit_initial$convergence != 0) { ## Check convergence
   warning("Optimization did not converge!")
@@ -238,8 +201,8 @@ gamma_hat <- fit_initial$par ## Extract fitted parameters
 beta_hat <- exp(gamma_hat)
 mu_fitted <- as.vector(X %*% beta_hat) ## Calculate fitted values
 f_fitted <- as.vector(matrices$X_tilde %*% beta_hat) ## f(t), the infection curve evaluated at extended time points
-par(mfrow = c(1, 2), mar = c(4, 4, 3, 1)) ## Plot results
 
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1)) 
 ## Plot 1: Actual vs Fitted Deaths
 plot(t, y, type = "p", pch = 19, col = "black",
      xlab = "Day of Year 2020", ylab = "Deaths", main = "Actual vs Fitted Deaths")
@@ -262,19 +225,6 @@ compute_bic <- function(gamma, lambda, X, y, S) {
 ## H_0 = X^T W X (Hessian without penalty)
 ## W = diag(y_i / mu_i^2) (Fisher information weight matrix)
 
-  ## Arguments:
-##   gamma: fitted log-parameters (length k vector)
-##   lambda: smoothing parameter (scalar)
-##   X: model matrix (n x k)
-##   y: observed deaths (length n vector)
-##   S: penalty matrix (k x k)
-##
-## Returns:
-##   List with components:
-##     bic: BIC value
-##     edf: effective degrees of freedom
-##     nll: negative log-likelihood (unpenalized)
-
   beta <- exp(gamma)
   mu <- as.vector(X %*% beta)
   nll_value <- -sum(y * log(mu) - mu) ## Negative log-likelihood (without penalty)
@@ -283,7 +233,7 @@ compute_bic <- function(gamma, lambda, X, y, S) {
   ## Compute Hessian matrices, w.r.t. beta, not gamma.
   XtWX <- t(X) %*% (W * X)  ## X^T W X (using vectorized multiplication)
   H_lambda <- XtWX + lambda * S ## Penalized Hessian
-  H_0 <- XtWX        ## Unpenalized Hessian
+  H_0 <- XtWX  ## Unpenalized Hessian
 
   ## Compute effective degrees of freedom
   ## Use Cholesky decomposition for numerical stability
@@ -296,7 +246,7 @@ compute_bic <- function(gamma, lambda, X, y, S) {
   return(list(bic = bic, edf = edf, nll = nll_value))
 }
 
-## Grid search over log(lambda) from -13 to -7 corresponds to 50 equally spaced values
+## Grid search over log(lambda) from -13 to -7 corresponds to 50 equally spaced values.
 log_lambda_seq <- seq(-13, -7, length = 50)
 lambda_seq <- exp(log_lambda_seq) ## Convert to lambda scale
 
@@ -309,14 +259,12 @@ gamma_fits <- matrix(0, length(gamma_init), length(lambda_seq))
 ## Loop over each lambda value in grid
 for (i in 1:length(lambda_seq)) { 
   lambda_current <- lambda_seq[i]
-  
   fit_current <- optim( ## Optimize for current lambda
     par = gamma_init,  ## Using same starting values
     fn = nll, gr = grad_nll, X = X, y = y,
     S = S, lambda = lambda_current, method = "BFGS",control = list(maxit = 1000))
 
-  ## Store results
-  gamma_fits[, i] <- fit_current$par 
+  gamma_fits[, i] <- fit_current$par ## Store results
   
   ## Compute BIC for this fit
   bic_result <- compute_bic(fit_current$par, lambda_current, X, y, S)
@@ -324,9 +272,6 @@ for (i in 1:length(lambda_seq)) {
   edf_values[i] <- bic_result$edf
   nll_values[i] <- bic_result$nll
   
-  if (i %% 10 == 0) { ## Print progress update every 10 iterations
-    cat("  Completed", i, "of", length(lambda_seq), "\n")
-  }
 }
 
 ## Find optimal lambda minimize bic
@@ -343,9 +288,8 @@ cat("Effective degrees of freedom at optimum:", edf_values[optimal_index], "\n")
 
 ## Plot BIC curve for visualize selection
 par(mfrow = c(1, 2), mar = c(4, 4, 3, 1)) 
-
 ## Plot 1: BIC vs log(lambda)
-plot(log_lambda_seq, bic_values, type = "l", lwd = 2,   ## Line plot
+plot(log_lambda_seq, bic_values, type = "l", lwd = 2, ## Line plot
      xlab = "log(lambda)", ylab = "BIC", main = "BIC vs log(lambda)")
 points(log_lambda_optimal, bic_values[optimal_index], ## Mark optimum
        col = "red", pch = 19, cex = 1.5)
@@ -359,11 +303,10 @@ points(edf_values[optimal_index], bic_values[optimal_index], ## Mark optimum
 
 ## obtain 200 bootstrap replicates of f_hat
 n_bootstrap <- 200
-
 f_bootstrap <- matrix(0, length(t_cover), n_bootstrap) ## Storage for bootstrap results
                                                        ## Each column is f(t) for one bootstrap replicate
 
-## bootstrap resampling
+## Bootstrap resampling
 ## Instead of actually resampling data, we use weighted likelihood
 ## where weights wb indicate how many times each observation is sampled
 for (b in 1:n_bootstrap) { 
@@ -375,20 +318,18 @@ for (b in 1:n_bootstrap) {
     mu <- X %*% beta
     mu <- as.vector(mu)
     ll <- sum(weights * (y * log(mu) - mu)) ## Weighted Poisson log-likelihood
-    
     penalty <- (lambda / 2) * sum(beta * (S %*% beta)) #same penalty as before not weighted
     return(-ll + penalty)
   }
 
-   
   grad_nll_bootstrap <- function(gamma, X, y, S, lambda, weights) {
     ## Modified gradient with bootstrap weights
     beta <- exp(gamma)
     mu <- X %*% beta
     mu <- as.vector(mu)
     grad_ll_beta <- t(X) %*% (weights * (y / mu - 1)) ## Weighted gradient of log-likelihood w.r.t. beta
-    grad_penalty_beta <- lambda * (S %*% beta)     ## Gradient of penalty (same as before)
-    grad <- -beta * (grad_ll_beta - grad_penalty_beta)   ## Apply chain rule
+    grad_penalty_beta <- lambda * (S %*% beta) ## Gradient of penalty (same as before)
+    grad <- -beta * (grad_ll_beta - grad_penalty_beta) ## Apply chain rule
     return(as.vector(grad))
   }
   
@@ -402,9 +343,6 @@ for (b in 1:n_bootstrap) {
   beta_boot <- exp(fit_boot$par) ## Calculate f(t) for this bootstrap replicate
   f_bootstrap[, b] <- as.vector(matrices$X_tilde %*% beta_boot)
   
-  if (b %% 20 == 0) { ## Progress update every 20 replicates
-    cat("  Completed", b, "of", n_bootstrap, "bootstrap replicates\n")
-  }
 }
 
 ## Calculate 95% confidence intervals
@@ -419,11 +357,10 @@ mu_optimal <- as.vector(X %*% beta_optimal) ## Fitted deaths
 f_optimal <- as.vector(matrices$X_tilde %*% beta_optimal) ## Fitted infections
 
 par(mfrow = c(2, 1), mar = c(4, 4, 3, 1)) ## Create comprehensive plot with two panels
-
 ## Panel 1: Deaths - Actual vs Fitted
-plot(t, y, type = "p", pch = 19, cex = 0.8, col = "black", ## Solid circles, Point size
+plot(t, y, type = "p", pch = 19, cex = 0.8, col = "black", 
      xlab = "Day of Year 2020", ylab = "Number of Deaths",
-     main = "COVID-19 Deaths: Actual vs Model Fit", ylim = c(0, max(y) * 1.1)) ## Add 10% margin at top
+     main = "COVID-19 Deaths: Actual vs Model Fit", ylim = c(0, max(y) * 1.1))
 lines(t, mu_optimal, col = "red", lwd = 2) ## Overlay fitted curve
 legend("topright", legend = c("Observed Deaths", "Model Fit"),
        col = c("black", "red"), pch = c(19, NA),
@@ -441,22 +378,17 @@ plot(t_cover, f_optimal, type = "l", col = "blue", lwd = 2,
      ylim = c(0, max(f_upper) * 1.1))
 
 ## Add 95% confidence interval as shaded region
-## x-coordinates (forward then backward)
-## y-coordinates (lower then upper)
-## Transparent blue
-## No border
 polygon(c(t_cover, rev(t_cover)), c(f_lower, rev(f_upper)), 
         col = rgb(0, 0, 1, 0.2), border = NA)
 
-## Add confidence interval boundary lines
+## Add confidence interval boundary lines.
 lines(t_cover, f_lower, col = "blue", lty = 2, lwd = 1) 
 lines(t_cover, f_upper, col = "blue", lty = 2, lwd = 1)
 lines(t_cover, f_optimal, col = "blue", lwd = 2) ## Redraw main curve on top of shading
 abline(v = min(t), lty = 2, col = "gray") ## Mark first observation day
-legend("topright",
-       legend = c("Estimated f(t)", "95% CI", "First Death"),
-       col = c("blue", "blue", "gray"), lty = c(1, 2, 2), 
-       lwd = c(2, 1, 1), bty = "n")
+legend("topright", legend = c("Estimated f(t)", "95% CI", "First Death"),
+       col = c("blue", "blue", "gray"), lty = c(1, 2, 2), lwd = c(2, 1, 1), bty = "n")
+
 
 
 
