@@ -18,7 +18,8 @@
 ## then find the value of lambda minizing the model BIC criterion.
 ## We make K, the number of basic functions (say 80), to avoid underfitting and 
 ## impose a smoothing penalty during fitting as well.
-## Quantify uncertainty through 200 bootstrap replicates.
+## Bootstrap resampling (200 replicates) is used to estimate 95% confidence intervals
+## for the inferred daily infection rate, accounting for data sampling variability.
 ################################################################################
 
 library(splines) ## Load required library for B-spline basis functions.
@@ -393,6 +394,7 @@ lines(t_cover, f_optimal, col = "blue", lwd = 2) ## Redraw main curve on top of 
 abline(v = min(t), lty = 2, col = "gray") ## Mark first observation day
 legend("topright", legend = c("Estimated f(t)", "95% CI", "First Death"),
        col = c("blue", "blue", "gray"), lty = c(1, 2, 2), lwd = c(2, 1, 1), bty = "n")
+
 
 
 
