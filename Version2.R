@@ -2,22 +2,27 @@
 ## Practical 3: Smooth Deconvolution - COVID-19 Deaths Analysis
 ## GitHub Repository: [https://github.com/Andrea-ph/proj3]
 ###########################################################
-####proj3 - Group 33 - Extended Statistical Programming ###
-#### Group members as below ################################
-#### Shuo Li (s2795688), Zhe Zhu (s2841606), Antrea Filippou (s2766374)
-#### Contributions as below ###############################################################
-#### Shuo Li: Setup matrices(X_tilde, X, S) and test the derivative function (33%)#########
-#### Zhe Zhu: sanity check and  fit the model；BIC optimization and lambda selection (33%)#
-#### Antrea Filippou: Bootstrap analysis and final visualization (34%)#####################
+## Proj3 - Group 33 - Extended Statistical Programming ###
+## Group members as below ################################
+## Shuo Li (s2795688), Zhe Zhu (s2841606), Antrea Filippou (s2766374)
+## Contributions as below ###############################################################
+## Shuo Li: Setup matrices(X_tilde, X, S) and test the derivative function (33%)#########
+## Zhe Zhu: sanity check and  fit the model；BIC optimization and lambda selection (33%)#
+## Antrea Filippou: Bootstrap analysis and final visualization (34%)#####################
 ###########################################################################################
-## This code implements a smooth deconvolution model to infer daily new COVID-19
-## infections from observed death data, using B-splines with a smoothing penalty.
+## File engcov.txt contains daily deaths data from Covid-19 in English hospitals (variable nhs)
+## against day of the year 2020 (variable julian).
+## Code to fit the smooth deconvolution model to the Covid death data
+## to infer the trajectory of daily new COVID-19 infections that eventually resulted these deaths
+## from observed data, using B-splines with a smoothing penalty, given a value for lambda and
+## then find the value of lambda minizing the model BIC criterion.
+## We make K, the number of basic functions (say 80), to avoid underfitting and 
+## impose a smoothing penalty during fitting as well.
+## Quantify uncertainty through 200 bootstrap replicates.
 ################################################################################
 
-library(splines) ## Load required library for B-spline basis functions
-## Read COVID-19 death data from English hospitals
-## Data contains daily deaths (nhs) and corresponding julian day (julian) in 2020
-dat <- read.table("engcov.txt", header = TRUE)
+library(splines) ## Load required library for B-spline basis functions.
+dat <- read.table("engcov.txt", header = TRUE) ## Read COVID-19 death data of 2020.
 
 ## Extract relevant variables
 y <- dat$nhs ## Deaths in NHS hospitals
@@ -388,6 +393,7 @@ lines(t_cover, f_optimal, col = "blue", lwd = 2) ## Redraw main curve on top of 
 abline(v = min(t), lty = 2, col = "gray") ## Mark first observation day
 legend("topright", legend = c("Estimated f(t)", "95% CI", "First Death"),
        col = c("blue", "blue", "gray"), lty = c(1, 2, 2), lwd = c(2, 1, 1), bty = "n")
+
 
 
 
