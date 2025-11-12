@@ -22,6 +22,10 @@
 ## for the inferred daily infection rate, accounting for data sampling variability.
 ################################################################################
 
+## GitHub Repository:
+## https://github.com/Andrea-ph/proj3
+
+
 library(splines) ## Load required library for B-spline basis functions.
 dat <- read.table("engcov.txt", header = TRUE) ## Read COVID-19 death data of 2020.
 
@@ -394,6 +398,7 @@ lines(t_cover, f_optimal, col = "blue", lwd = 2) ## Redraw main curve on top of 
 abline(v = min(t), lty = 2, col = "gray") ## Mark first observation day
 legend("topright", legend = c("Estimated f(t)", "95% CI", "First Death"),
        col = c("blue", "blue", "gray"), lty = c(1, 2, 2), lwd = c(2, 1, 1), bty = "n")
+
 
 
 
